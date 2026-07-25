@@ -19,6 +19,10 @@
 - **Favorites**: ⌥-click an item (or press ⌥1–⌥9) to pin it — it gets
   a ★, stays at the top of the list, and is never pushed out by new
   copies. ⌥-click again to unpin.
+- **Favorite as you copy**: hold ⌘C a beat longer (or press it twice
+  within a second or two) and the item is pinned the moment it's
+  captured — no permissions or key monitoring involved; Jotter just
+  notices the same content arriving twice in quick succession.
 - Copied colors (`#ff5733`, `ff5733`, `rgb(255, 87, 51)`, `rgba(...)`)
   are shown in their own color with a swatch
 - Copied images show a thumbnail — hover for a large preview, click the

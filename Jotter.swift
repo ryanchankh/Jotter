@@ -198,13 +198,21 @@ final class ClipboardStore: ObservableObject {
         history = h
     }
 
+    /// Copying the same content again within this window auto-favorites it —
+    /// holding ⌘C repeats Copy in most apps, so "hold ⌘C a beat longer"
+    /// (or a quick double ⌘C) pins the item as you copy it.
+    static let refavoriteWindow: TimeInterval = 1.5
+
     func addText(_ str: String) {
         var h = history
-        let wasFavorite = h.first { $0.dedupKey == "t:\(str)" }?.isFavorite ?? false
+        let existing = h.first { $0.dedupKey == "t:\(str)" }
+        let quickRecopy = existing
+            .map { Date().timeIntervalSince($0.date) < Self.refavoriteWindow } ?? false
         h.removeAll { $0.dedupKey == "t:\(str)" }
         h.insert(ClipItem(id: UUID(), kind: .text, text: str,
                           imageFilename: nil, hash: nil, date: Date(),
-                          isFavorite: wasFavorite), at: 0)
+                          isFavorite: (existing?.isFavorite ?? false) || quickRecopy),
+                 at: 0)
         history = trimmed(h)
     }
 
@@ -213,11 +221,17 @@ final class ClipboardStore: ObservableObject {
             .map { String(format: "%02x", $0) }
             .joined()
 
-        // Same image copied again? Just move it to the front.
+        // Same image copied again? Move it to the front — and favorite it
+        // if the re-copy came right away (see refavoriteWindow).
         if let existing = history.first(where: { $0.dedupKey == "i:\(hashHex)" }) {
             var h = history
             h.removeAll { $0.id == existing.id }
-            h.insert(existing, at: 0)
+            var moved = existing
+            if Date().timeIntervalSince(existing.date) < Self.refavoriteWindow {
+                moved.isFavorite = true
+            }
+            moved.date = Date()
+            h.insert(moved, at: 0)
             history = h
             return
         }
