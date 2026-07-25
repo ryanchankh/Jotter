@@ -6,7 +6,7 @@
 set -e
 cd "$(dirname "$0")"
 
-VERSION=1.1
+VERSION=1.0
 APP=build/Jotter.app
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
