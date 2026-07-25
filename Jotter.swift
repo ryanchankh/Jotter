@@ -912,6 +912,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
 
         menu.addItem(.separator())
 
+        let historyItem = NSMenuItem(title: "History…",
+                                     action: #selector(openHistory),
+                                     keyEquivalent: "")
+        historyItem.target = self
+        historyItem.image = NSImage(systemSymbolName: "clock.arrow.circlepath",
+                                    accessibilityDescription: nil)
+        menu.addItem(historyItem)
+
         let settings = NSMenuItem(title: "Settings…",
                                   action: #selector(openSettings),
                                   keyEquivalent: ",")
@@ -958,6 +966,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
 
     @objc func clearHistory() {
         store.clear()
+    }
+
+    /// Opens the Settings window straight on the History tab.
+    @objc func openHistory() {
+        openSettings()
+        (settingsWindow?.contentViewController as? NSTabViewController)?
+            .selectedTabViewItemIndex = 0
     }
 
     @objc func openSettings() {
