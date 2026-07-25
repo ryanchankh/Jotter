@@ -7,6 +7,10 @@
   low 1–9 shortcuts, and is never evicted when history reaches its
   size limit. Settings → History gets a ★ Favorite button and star
   badges. Old history files load unchanged.
+- Edit before copy: ⌘⇧C opens the current clipboard text in a small
+  editor; ⌘↩ copies the result and adds it to history without touching
+  the original item. ⇧-click any text row in the list (or ⇧1–⇧9) to
+  edit that item instead. Jotter claims ⌘⇧C system-wide while running.
 - The status bar list gets a History… item that opens the saved
   history browser directly (Settings now opens on the History tab,
   with General second).

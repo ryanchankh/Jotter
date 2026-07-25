@@ -19,6 +19,11 @@
 - **Favorites**: ⌥-click an item (or press ⌥1–⌥9) to pin it — it gets
   a ★, stays at the top of the list, and is never pushed out by new
   copies. ⌥-click again to unpin.
+- **Edit before copy**: press **⌘⇧C** anywhere to tweak whatever is on
+  the clipboard in a small editor — ⌘↩ puts the edited text on the
+  clipboard (and in history; the original item stays). In the list,
+  hold **⇧** and any text row becomes "✎ Edit & Copy…". Note: Jotter
+  claims ⌘⇧C system-wide while it runs.
 - **Favorite as you copy**: hold ⌘C a beat longer (or press it twice
   within a second or two) and the item is pinned the moment it's
   captured — no permissions or key monitoring involved; Jotter just

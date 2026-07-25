@@ -581,6 +581,37 @@ struct AboutTab: View {
     }
 }
 
+// MARK: - Edit before copy
+
+struct EditView: View {
+    @State var text: String
+    var onCopy: (String) -> Void
+    var onCancel: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            TextEditor(text: $text)
+                .font(.body)
+                .overlay(RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color.gray.opacity(0.35), lineWidth: 1))
+
+            HStack {
+                Text("⌘↩ copies · esc cancels")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button("Cancel", action: onCancel)
+                    .keyboardShortcut(.cancelAction)
+                Button("Copy") { onCopy(text) }
+                    .keyboardShortcut(.return, modifiers: .command)
+                    .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(14)
+        .frame(width: 480, height: 300)
+    }
+}
+
 // MARK: - App
 
 @main
@@ -603,8 +634,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
     var searchItem: NSMenuItem!
     var searchField: NSSearchField!
     var settingsWindow: NSWindow?
+    var editWindow: NSWindow?
     var timer: Timer?
     var hotKeyRef: EventHotKeyRef?
+    var editHotKeyRef: EventHotKeyRef?
     var openedViaHotkey = false
     var lastChangeCount = NSPasteboard.general.changeCount
     var query = ""
@@ -647,26 +680,45 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         registerHotKey()
     }
 
-    // MARK: Global hotkey (⌘⇧V)
+    // MARK: Global hotkeys (⌘⇧V list, ⌘⇧C edit & copy)
 
     func registerHotKey() {
         var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard),
                                       eventKind: UInt32(kEventHotKeyPressed))
 
-        InstallEventHandler(GetApplicationEventTarget(), { _, _, userData -> OSStatus in
-            guard let userData else { return noErr }
+        InstallEventHandler(GetApplicationEventTarget(), { _, event, userData -> OSStatus in
+            guard let userData, let event else { return noErr }
+            var hotKeyID = EventHotKeyID()
+            GetEventParameter(event, EventParamName(kEventParamDirectObject),
+                              EventParamType(typeEventHotKeyID), nil,
+                              MemoryLayout<EventHotKeyID>.size, nil, &hotKeyID)
             let delegate = Unmanaged<AppDelegate>.fromOpaque(userData).takeUnretainedValue()
-            DispatchQueue.main.async { delegate.openMenuFromHotkey() }
+            let id = hotKeyID.id
+            DispatchQueue.main.async {
+                switch id {
+                case 1: delegate.openMenuFromHotkey()
+                case 2: delegate.editClipboardFromHotkey()
+                default: break
+                }
+            }
             return noErr
         }, 1, &eventType, Unmanaged.passUnretained(self).toOpaque(), nil)
 
-        let hotKeyID = EventHotKeyID(signature: OSType(0x434C_4950), id: 1) // 'CLIP'
+        let listID = EventHotKeyID(signature: OSType(0x434C_4950), id: 1) // 'CLIP'
         RegisterEventHotKey(UInt32(kVK_ANSI_V),
                             UInt32(cmdKey | shiftKey),
-                            hotKeyID,
+                            listID,
                             GetApplicationEventTarget(),
                             0,
                             &hotKeyRef)
+
+        let editID = EventHotKeyID(signature: OSType(0x434C_4950), id: 2)
+        RegisterEventHotKey(UInt32(kVK_ANSI_C),
+                            UInt32(cmdKey | shiftKey),
+                            editID,
+                            GetApplicationEventTarget(),
+                            0,
+                            &editHotKeyRef)
     }
 
     func openMenuFromHotkey() {
@@ -908,6 +960,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
             alt.isAlternate = true
             alt.image = menuItem.image
             menu.addItem(alt)
+
+            // Hold ⇧ and a text row becomes "edit before copy" (⇧1–⇧9 too).
+            if item.kind == .text {
+                let edit = NSMenuItem(title: "✎ Edit & Copy…",
+                                      action: #selector(editItem(_:)),
+                                      keyEquivalent: menuItem.keyEquivalent)
+                edit.target = self
+                edit.tag = index
+                edit.keyEquivalentModifierMask = [.shift]
+                edit.isAlternate = true
+                edit.image = menuItem.image
+                menu.addItem(edit)
+            }
         }
 
         menu.addItem(.separator())
@@ -962,6 +1027,58 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         let items = filteredHistory
         guard items.indices.contains(sender.tag) else { return }
         store.toggleFavorite(ids: [items[sender.tag].id])
+    }
+
+    // MARK: Edit before copy
+
+    /// ⌘⇧C: edit whatever is on the clipboard, then copy the result.
+    func editClipboardFromHotkey() {
+        let text = NSPasteboard.general.string(forType: .string)
+            ?? store.history.first { $0.kind == .text }?.text
+        guard let text, !text.isEmpty else { return NSSound.beep() }
+        presentEditor(text: text)
+    }
+
+    /// ⇧-click on a list item: edit that item, then copy the result.
+    @objc func editItem(_ sender: NSMenuItem) {
+        let items = filteredHistory
+        guard items.indices.contains(sender.tag) else { return }
+        presentEditor(text: items[sender.tag].text)
+    }
+
+    func presentEditor(text original: String) {
+        editWindow?.close()
+        let view = EditView(
+            text: original,
+            onCopy: { [weak self] edited in
+                self?.finishEdit(edited, original: original)
+            },
+            onCancel: { [weak self] in self?.editWindow?.close() })
+        let window = NSWindow(contentViewController: NSHostingController(rootView: view))
+        window.title = "Edit & Copy"
+        window.styleMask = [.titled, .closable, .miniaturizable]
+        window.isReleasedWhenClosed = false
+        window.center()
+        editWindow = window
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+        window.orderFrontRegardless()
+    }
+
+    private func finishEdit(_ edited: String, original: String) {
+        defer { editWindow?.close() }
+        guard !edited.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return }
+        // The edited text becomes a new history item; the original stays.
+        // Same text unchanged = plain re-copy, so no history churn (and no
+        // accidental quick-recopy auto-favorite).
+        if edited != original {
+            store.addText(edited)
+        }
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(edited, forType: .string)
+        lastChangeCount = pb.changeCount
     }
 
     @objc func clearHistory() {
