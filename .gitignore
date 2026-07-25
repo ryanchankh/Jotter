@@ -1,0 +1,11 @@
+# Build artifacts
+build/
+jotter
+
+# macOS
+.DS_Store
+
+# Xcode (if you develop with an Xcode project locally)
+*.xcodeproj
+xcuserdata/
+DerivedData/
