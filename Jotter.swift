@@ -350,23 +350,23 @@ func makeSettingsWindow(store: ClipboardStore) -> NSWindow {
     let tabs = NSTabViewController()
     tabs.tabStyle = .toolbar
 
-    let generalVC = NSHostingController(
-        rootView: GeneralTab(store: store).frame(width: 480, height: 420))
-    generalVC.title = "General"        // becomes the window title for this tab
-    let general = NSTabViewItem(viewController: generalVC)
-    general.label = "General"
-    general.image = NSImage(systemSymbolName: "gearshape",
-                            accessibilityDescription: nil)
-    tabs.addTabViewItem(general)
-
     let historyVC = NSHostingController(
         rootView: HistoryTab(store: store).frame(width: 480, height: 420))
-    historyVC.title = "History"
+    historyVC.title = "History"        // becomes the window title for this tab
     let history = NSTabViewItem(viewController: historyVC)
     history.label = "History"
     history.image = NSImage(systemSymbolName: "clock.arrow.circlepath",
                             accessibilityDescription: nil)
     tabs.addTabViewItem(history)
+
+    let generalVC = NSHostingController(
+        rootView: GeneralTab(store: store).frame(width: 480, height: 420))
+    generalVC.title = "General"
+    let general = NSTabViewItem(viewController: generalVC)
+    general.label = "General"
+    general.image = NSImage(systemSymbolName: "gearshape",
+                            accessibilityDescription: nil)
+    tabs.addTabViewItem(general)
 
     let aboutVC = NSHostingController(
         rootView: AboutTab().frame(width: 480, height: 420))
