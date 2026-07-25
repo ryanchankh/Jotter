@@ -14,8 +14,10 @@
 - Watches the clipboard and keeps your recent copies (text **and** images)
 - Click the menu bar icon → list opens with a fuzzy search field focused
   ("cbm" matches "ClipboardManager")
-- Press **⌘⇧V** anywhere → keyboard-first list: navigate with ↑/↓ + Return,
-  or press **1–9** to grab an item instantly
+- Press **⌘⇧V** anywhere → keyboard-first list: navigate with ↑/↓ or
+  vim-style **h/j/k/l** + Return, or press **1–9** to grab an item
+  instantly (h/j/k/l needs Accessibility permission — you'll be asked
+  once; everything else works without it)
 - Copied colors (`#ff5733`, `ff5733`, `rgb(255, 87, 51)`, `rgba(...)`)
   are shown in their own color with a swatch
 - Copied images show a thumbnail — hover for a large preview, click the

@@ -529,6 +529,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
     var settingsWindow: NSWindow?
     var timer: Timer?
     var hotKeyRef: EventHotKeyRef?
+    var vimTap: CFMachPort?
+    var promptedForAccessibility = false
+    var menuIsOpen = false
     var openedViaHotkey = false
     var lastChangeCount = NSPasteboard.general.changeCount
     var query = ""
@@ -571,6 +574,66 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         registerHotKey()
     }
 
+    // MARK: Vim-style menu navigation (h/j/k/l)
+
+    /// Remaps h/j/k/l to ←/↓/↑/→ while the menu is open, so the hand can
+    /// stay on the home row (j/k move the highlight, l opens an image
+    /// preview, h closes it; Return copies). A CGEvent tap is required
+    /// because menu tracking consumes key events before app-level monitors
+    /// see them — which means this needs Accessibility permission (prompted
+    /// once, on first hotkey use). Without it, ↑/↓ and 1–9 still work.
+    func enableVimKeys() {
+        if vimTap == nil {
+            guard AXIsProcessTrusted() else { return }
+            let mask = CGEventMask(1 << CGEventType.keyDown.rawValue)
+                | CGEventMask(1 << CGEventType.keyUp.rawValue)
+            vimTap = CGEvent.tapCreate(
+                tap: .cgSessionEventTap,
+                place: .headInsertEventTap,
+                options: .defaultTap,
+                eventsOfInterest: mask,
+                callback: { _, type, event, refcon in
+                    guard let refcon else { return Unmanaged.passUnretained(event) }
+                    let delegate = Unmanaged<AppDelegate>.fromOpaque(refcon)
+                        .takeUnretainedValue()
+                    return delegate.remapVimKeys(type: type, event: event)
+                },
+                userInfo: Unmanaged.passUnretained(self).toOpaque())
+            guard let vimTap else { return }
+            let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, vimTap, 0)
+            CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+        }
+        if let vimTap { CGEvent.tapEnable(tap: vimTap, enable: true) }
+    }
+
+    func disableVimKeys() {
+        if let vimTap { CGEvent.tapEnable(tap: vimTap, enable: false) }
+    }
+
+    func remapVimKeys(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            if let vimTap, menuIsOpen { CGEvent.tapEnable(tap: vimTap, enable: true) }
+            return Unmanaged.passUnretained(event)
+        }
+        guard menuIsOpen,
+              searchField.currentEditor() == nil,   // typing in search stays typing
+              event.flags.intersection([.maskCommand, .maskControl, .maskAlternate])
+                  .isEmpty
+        else { return Unmanaged.passUnretained(event) }
+
+        let remap: [Int64: Int64] = [
+            Int64(kVK_ANSI_H): Int64(kVK_LeftArrow),
+            Int64(kVK_ANSI_J): Int64(kVK_DownArrow),
+            Int64(kVK_ANSI_K): Int64(kVK_UpArrow),
+            Int64(kVK_ANSI_L): Int64(kVK_RightArrow),
+        ]
+        let code = event.getIntegerValueField(.keyboardEventKeycode)
+        if let arrow = remap[code] {
+            event.setIntegerValueField(.keyboardEventKeycode, value: arrow)
+        }
+        return Unmanaged.passUnretained(event)
+    }
+
     // MARK: Global hotkey (⌘⇧V)
 
     func registerHotKey() {
@@ -594,6 +657,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
     }
 
     func openMenuFromHotkey() {
+        // First hotkey use: ask for the Accessibility permission that
+        // h/j/k/l navigation needs (see enableVimKeys). Once per launch.
+        if !AXIsProcessTrusted(), !promptedForAccessibility {
+            promptedForAccessibility = true
+            let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue()
+                           as String: true] as CFDictionary
+            AXIsProcessTrustedWithOptions(options)
+        }
         openedViaHotkey = true
         // A crowded menu bar (esp. behind a MacBook notch) can leave the
         // status item without a window; fall back to a menu at the cursor.
@@ -690,6 +761,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
     }
 
     func menuWillOpen(_ menu: NSMenu) {
+        menuIsOpen = true
+        enableVimKeys()
         searchField.stringValue = ""
         query = ""
         refreshHistoryItems()
@@ -701,6 +774,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
             }
         }
         openedViaHotkey = false
+    }
+
+    func menuDidClose(_ menu: NSMenu) {
+        menuIsOpen = false
+        disableVimKeys()
     }
 
     // MARK: Images

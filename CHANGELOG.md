@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1 — Unreleased
+
+- Vim-style navigation in the ⌘⇧V list: h/j/k/l act as ←/↓/↑/→ so the
+  hand stays on the home row (j/k move the highlight, l opens an image
+  preview, h closes it, Return copies). Implemented with a CGEvent tap
+  that is active only while the menu is open, so it requires
+  Accessibility permission — prompted once on first hotkey use; ↑/↓
+  and 1–9 keep working without it. Typing in the search field is never
+  remapped.
+
 ## 1.0 — 2026-07-25
 
 Initial release.
