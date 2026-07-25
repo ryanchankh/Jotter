@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1 — Unreleased
+
+- Favorites: ⌥-click any item in the list (or ⌥1–⌥9) to pin it — it
+  shows a ★, stays above a separator at the top of the list, keeps the
+  low 1–9 shortcuts, and is never evicted when history reaches its
+  size limit. Settings → History gets a ★ Favorite button and star
+  badges. Old history files load unchanged.
+
 ## 1.0 — 2026-07-25
 
 Initial release.

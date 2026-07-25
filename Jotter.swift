@@ -29,8 +29,33 @@ struct ClipItem: Codable, Hashable, Identifiable {
     var imageFilename: String?  // PNG file inside <savePath>/images
     var hash: String?           // SHA-256 of image data, used for de-duplication
     var date: Date
+    var isFavorite: Bool        // favorites are pinned on top and never evicted
 
     var dedupKey: String { kind == .text ? "t:\(text)" : "i:\(hash ?? "")" }
+
+    init(id: UUID, kind: Kind, text: String, imageFilename: String?,
+         hash: String?, date: Date, isFavorite: Bool = false) {
+        self.id = id
+        self.kind = kind
+        self.text = text
+        self.imageFilename = imageFilename
+        self.hash = hash
+        self.date = date
+        self.isFavorite = isFavorite
+    }
+
+    // Custom decoding so history.json files written before favorites
+    // existed (no isFavorite key) still load.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        kind = try c.decode(Kind.self, forKey: .kind)
+        text = try c.decode(String.self, forKey: .text)
+        imageFilename = try c.decodeIfPresent(String.self, forKey: .imageFilename)
+        hash = try c.decodeIfPresent(String.self, forKey: .hash)
+        date = try c.decode(Date.self, forKey: .date)
+        isFavorite = try c.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
+    }
 }
 
 // MARK: - Store: history + settings + persistence
@@ -45,7 +70,7 @@ final class ClipboardStore: ObservableObject {
         didSet {
             UserDefaults.standard.set(maxItems, forKey: "maxItems")
             if history.count > maxItems {
-                history.removeLast(history.count - maxItems)
+                history = trimmed(history)
             }
         }
     }
@@ -101,7 +126,7 @@ final class ClipboardStore: ObservableObject {
     private func loadHistoryFromDisk() -> [ClipItem] {
         guard let data = try? Data(contentsOf: historyFileURL) else { return [] }
         if let items = try? JSONDecoder().decode([ClipItem].self, from: data) {
-            return Array(items.prefix(maxItems))
+            return trimmed(items)
         }
         // Migrate from the old plain-[String] format.
         if let legacy = try? JSONDecoder().decode([String].self, from: data) {
@@ -154,12 +179,33 @@ final class ClipboardStore: ObservableObject {
 
     // MARK: Mutations
 
+    /// Keeps every favorite; newest non-favorites fill the remaining slots.
+    private func trimmed(_ items: [ClipItem]) -> [ClipItem] {
+        var slots = max(maxItems - items.filter(\.isFavorite).count, 0)
+        return items.filter { item in
+            if item.isFavorite { return true }
+            guard slots > 0 else { return false }
+            slots -= 1
+            return true
+        }
+    }
+
+    func toggleFavorite(ids: Set<UUID>) {
+        var h = history
+        for i in h.indices where ids.contains(h[i].id) {
+            h[i].isFavorite.toggle()
+        }
+        history = h
+    }
+
     func addText(_ str: String) {
         var h = history
+        let wasFavorite = h.first { $0.dedupKey == "t:\(str)" }?.isFavorite ?? false
         h.removeAll { $0.dedupKey == "t:\(str)" }
         h.insert(ClipItem(id: UUID(), kind: .text, text: str,
-                          imageFilename: nil, hash: nil, date: Date()), at: 0)
-        history = Array(h.prefix(maxItems))
+                          imageFilename: nil, hash: nil, date: Date(),
+                          isFavorite: wasFavorite), at: 0)
+        history = trimmed(h)
     }
 
     func addImage(pngData: Data, pixelWidth: Int, pixelHeight: Int) {
@@ -191,7 +237,7 @@ final class ClipboardStore: ObservableObject {
         h.insert(ClipItem(id: id, kind: .image,
                           text: "Image \(pixelWidth)×\(pixelHeight)",
                           imageFilename: filename, hash: hashHex, date: Date()), at: 0)
-        history = Array(h.prefix(maxItems))
+        history = trimmed(h)
     }
 
     func delete(ids: Set<UUID>) {
@@ -378,6 +424,12 @@ struct HistoryTab: View {
     @ObservedObject var store: ClipboardStore
     @State private var selection = Set<UUID>()
 
+    private var allSelectedAreFavorites: Bool {
+        !selection.isEmpty && store.history
+            .filter { selection.contains($0.id) }
+            .allSatisfy(\.isFavorite)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             if store.history.isEmpty {
@@ -402,6 +454,11 @@ struct HistoryTab: View {
                                 RoundedRectangle(cornerRadius: 3)
                                     .fill(Color(nsColor: color))
                                     .frame(width: 14, height: 14)
+                            }
+                            if item.isFavorite {
+                                Image(systemName: "star.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(.yellow)
                             }
                             Text(item.text.replacingOccurrences(of: "\n", with: " "))
                                 .lineLimit(1)
@@ -433,6 +490,11 @@ struct HistoryTab: View {
                 Button("Delete Selected") {
                     store.delete(ids: selection)
                     selection.removeAll()
+                }
+                .disabled(selection.isEmpty)
+
+                Button(allSelectedAreFavorites ? "★ Unfavorite" : "★ Favorite") {
+                    store.toggleFavorite(ids: selection)
                 }
                 .disabled(selection.isEmpty)
 
@@ -672,14 +734,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
     }
 
     /// Fuzzy-matches item labels — so typing "image" also finds pictures.
+    /// Favorites always come first, in their own order.
     var filteredHistory: [ClipItem] {
-        if query.isEmpty { return store.history }
-        return store.history
-            .compactMap { item in
-                fuzzyScore(query: query, candidate: item.text).map { (item, $0) }
-            }
-            .sorted { $0.1 > $1.1 }
-            .map { $0.0 }
+        let base: [ClipItem]
+        if query.isEmpty {
+            base = store.history
+        } else {
+            base = store.history
+                .compactMap { item in
+                    fuzzyScore(query: query, candidate: item.text).map { (item, $0) }
+                }
+                .sorted { $0.1 > $1.1 }
+                .map { $0.0 }
+        }
+        return base.filter(\.isFavorite) + base.filter { !$0.isFavorite }
     }
 
     // MARK: Search field
@@ -751,13 +819,22 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
             menu.addItem(empty)
         }
 
+        let favoriteCount = items.filter(\.isFavorite).count
+
         for (index, item) in items.enumerated() {
+            // Favorites sit in their own block above a separator.
+            if index == favoriteCount, favoriteCount > 0 {
+                menu.addItem(.separator())
+            }
+
             let menuItem: NSMenuItem
+            let star = item.isFavorite ? "★ " : ""
 
             switch item.kind {
             case .text:
                 let oneLine = item.text.replacingOccurrences(of: "\n", with: " ")
-                let title = oneLine.count > 40 ? String(oneLine.prefix(40)) + "…" : oneLine
+                let title = star
+                    + (oneLine.count > 40 ? String(oneLine.prefix(40)) + "…" : oneLine)
                 menuItem = NSMenuItem(title: title,
                                       action: #selector(copyItem(_:)),
                                       keyEquivalent: "")
@@ -780,7 +857,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
                 // Hover opens a submenu with a large preview.
                 // Items with submenus can't take a click action themselves,
                 // so the preview (and a "Copy Image" row) do the copying.
-                menuItem = NSMenuItem(title: item.text, action: nil, keyEquivalent: "")
+                menuItem = NSMenuItem(title: star + item.text,
+                                      action: nil, keyEquivalent: "")
                 menuItem.image = thumbnail(for: item)
 
                 let sub = NSMenu()
@@ -805,6 +883,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
 
             menuItem.tag = index
             menu.addItem(menuItem)
+
+            // Hold ⌥ and the row becomes a favorite toggle (so does ⌥1–⌥9).
+            let alt = NSMenuItem(title: item.isFavorite ? "☆ Unfavorite" : "★ Favorite",
+                                 action: #selector(toggleFavorite(_:)),
+                                 keyEquivalent: menuItem.keyEquivalent)
+            alt.target = self
+            alt.tag = index
+            alt.keyEquivalentModifierMask = [.option]
+            alt.isAlternate = true
+            alt.image = menuItem.image
+            menu.addItem(alt)
         }
 
         menu.addItem(.separator())
@@ -845,6 +934,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
             }
         }
         lastChangeCount = pb.changeCount   // don't re-add our own write
+    }
+
+    @objc func toggleFavorite(_ sender: NSMenuItem) {
+        let items = filteredHistory
+        guard items.indices.contains(sender.tag) else { return }
+        store.toggleFavorite(ids: [items[sender.tag].id])
     }
 
     @objc func clearHistory() {

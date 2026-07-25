@@ -16,6 +16,9 @@
   ("cbm" matches "ClipboardManager")
 - Press **⌘⇧V** anywhere → keyboard-first list: navigate with ↑/↓ + Return,
   or press **1–9** to grab an item instantly
+- **Favorites**: ⌥-click an item (or press ⌥1–⌥9) to pin it — it gets
+  a ★, stays at the top of the list, and is never pushed out by new
+  copies. ⌥-click again to unpin.
 - Copied colors (`#ff5733`, `ff5733`, `rgb(255, 87, 51)`, `rgba(...)`)
   are shown in their own color with a swatch
 - Copied images show a thumbnail — hover for a large preview, click the
