@@ -507,6 +507,24 @@ struct AboutTab: View {
 
 // MARK: - App
 
+/// A search field that can refuse keyboard focus. macOS auto-focuses a text
+/// field found in a menu, which would swallow the h/j/k/l and 1–9 keys — so
+/// when the list is opened via the ⌘⇧V hotkey the field stays unfocused and
+/// keys drive the menu. Clicking the field hands focus back for typing.
+final class MenuSearchField: NSSearchField {
+    var refusesFocus = false
+
+    override var acceptsFirstResponder: Bool {
+        !refusesFocus && super.acceptsFirstResponder
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        refusesFocus = false
+        window?.makeFirstResponder(self)
+        super.mouseDown(with: event)
+    }
+}
+
 @main
 class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFieldDelegate {
     static func main() {
@@ -525,7 +543,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
     var statusItem: NSStatusItem!
     var menu: NSMenu!
     var searchItem: NSMenuItem!
-    var searchField: NSSearchField!
+    var searchField: MenuSearchField!
     var settingsWindow: NSWindow?
     var timer: Timer?
     var hotKeyRef: EventHotKeyRef?
@@ -542,7 +560,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
             systemSymbolName: "doc.on.clipboard",
             accessibilityDescription: "Jotter")
 
-        searchField = NSSearchField(frame: NSRect(x: 12, y: 3, width: 220, height: 26))
+        searchField = MenuSearchField(frame: NSRect(x: 12, y: 3, width: 220, height: 26))
         searchField.placeholderString = "Fuzzy search…"
         searchField.delegate = self
         // Stretch with the menu: the container is resized to the menu's final
@@ -763,6 +781,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
     func menuWillOpen(_ menu: NSMenu) {
         menuIsOpen = true
         enableVimKeys()
+        // Hotkey opens = navigation mode: keep the system from auto-focusing
+        // the search field so keys reach the menu. Click opens = search mode.
+        searchField.refusesFocus = openedViaHotkey
         searchField.stringValue = ""
         query = ""
         refreshHistoryItems()

@@ -9,6 +9,10 @@
   Accessibility permission — prompted once on first hotkey use; ↑/↓
   and 1–9 keep working without it. Typing in the search field is never
   remapped.
+- The ⌘⇧V list now opens in navigation mode: the search field no
+  longer captures keystrokes (macOS auto-focuses text fields in menus,
+  which swallowed h/j/k/l and 1–9). Click the field — or open the list
+  from the menu bar icon — to type a search.
 
 ## 1.0 — 2026-07-25
 
