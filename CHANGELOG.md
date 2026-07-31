@@ -14,10 +14,6 @@
 - The status bar list gets a History… item that opens the saved
   history browser directly (Settings now opens on the History tab,
   with General second).
-- Favorite as you copy: re-copying the same content within 1.5 s
-  auto-pins it. Holding ⌘C repeats Copy in most apps, so "hold ⌘C a
-  beat longer" — or a quick double ⌘C — favorites the item at capture
-  time, with no keyboard monitoring or extra permissions.
 
 ## 1.0 — 2026-07-25
 

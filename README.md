@@ -24,10 +24,6 @@
   clipboard (and in history; the original item stays). In the list,
   hold **⇧** and any text row becomes "✎ Edit & Copy…". Note: Jotter
   claims ⌘⇧C system-wide while it runs.
-- **Favorite as you copy**: hold ⌘C a beat longer (or press it twice
-  within a second or two) and the item is pinned the moment it's
-  captured — no permissions or key monitoring involved; Jotter just
-  notices the same content arriving twice in quick succession.
 - Copied colors (`#ff5733`, `ff5733`, `rgb(255, 87, 51)`, `rgba(...)`)
   are shown in their own color with a swatch
 - Copied images show a thumbnail — hover for a large preview, click the
