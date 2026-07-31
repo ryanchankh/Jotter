@@ -21,7 +21,8 @@
   copies. ⌥-click again to unpin.
 - **Edit before copy**: press **⌘⇧C** anywhere to tweak whatever is on
   the clipboard in a small editor — ⌘↩ puts the edited text on the
-  clipboard (and in history; the original item stays). In the list,
+  clipboard (and in history; the original item stays), and a
+  ★ Favorite checkbox pins the result as it's copied. In the list,
   hold **⇧** and any text row becomes "✎ Edit & Copy…". Note: Jotter
   claims ⌘⇧C system-wide while it runs.
 - Copied colors (`#ff5733`, `ff5733`, `rgb(255, 87, 51)`, `rgba(...)`)

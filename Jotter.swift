@@ -198,6 +198,14 @@ final class ClipboardStore: ObservableObject {
         history = h
     }
 
+    func setFavorite(ids: Set<UUID>, _ value: Bool) {
+        var h = history
+        for i in h.indices where ids.contains(h[i].id) {
+            h[i].isFavorite = value
+        }
+        history = h
+    }
+
     func addText(_ str: String) {
         var h = history
         let wasFavorite = h.first { $0.dedupKey == "t:\(str)" }?.isFavorite ?? false
@@ -573,7 +581,8 @@ struct AboutTab: View {
 
 struct EditView: View {
     @State var text: String
-    var onCopy: (String) -> Void
+    @State var favorite: Bool
+    var onCopy: (String, Bool) -> Void
     var onCancel: () -> Void
 
     var body: some View {
@@ -584,13 +593,15 @@ struct EditView: View {
                     .stroke(Color.gray.opacity(0.35), lineWidth: 1))
 
             HStack {
+                Toggle("★ Favorite", isOn: $favorite)
+                    .toggleStyle(.checkbox)
+                Spacer()
                 Text("⌘↩ copies · esc cancels")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Spacer()
                 Button("Cancel", action: onCancel)
                     .keyboardShortcut(.cancelAction)
-                Button("Copy") { onCopy(text) }
+                Button("Copy") { onCopy(text, favorite) }
                     .keyboardShortcut(.return, modifiers: .command)
                     .buttonStyle(.borderedProminent)
             }
@@ -1036,10 +1047,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
 
     func presentEditor(text original: String) {
         editWindow?.close()
+        let alreadyFavorite = store.history
+            .first { $0.kind == .text && $0.text == original }?.isFavorite ?? false
         let view = EditView(
             text: original,
-            onCopy: { [weak self] edited in
-                self?.finishEdit(edited, original: original)
+            favorite: alreadyFavorite,
+            onCopy: { [weak self] edited, favorite in
+                self?.finishEdit(edited, original: original, favorite: favorite)
             },
             onCancel: { [weak self] in self?.editWindow?.close() })
         let window = NSWindow(contentViewController: NSHostingController(rootView: view))
@@ -1053,16 +1067,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         window.orderFrontRegardless()
     }
 
-    private func finishEdit(_ edited: String, original: String) {
+    func finishEdit(_ edited: String, original: String, favorite: Bool) {
         defer { editWindow?.close() }
         guard !edited.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         else { return }
         // The edited text becomes a new history item; the original stays.
-        // Same text unchanged = plain re-copy, so no history churn (and no
-        // accidental quick-recopy auto-favorite).
-        if edited != original {
+        // Unchanged text is a plain re-copy of the existing item.
+        if !store.history.contains(where: { $0.kind == .text && $0.text == edited }) {
             store.addText(edited)
         }
+        let ids = store.history
+            .filter { $0.kind == .text && $0.text == edited }
+            .map(\.id)
+        store.setFavorite(ids: Set(ids), favorite)
         let pb = NSPasteboard.general
         pb.clearContents()
         pb.setString(edited, forType: .string)
