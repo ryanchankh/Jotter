@@ -2,7 +2,14 @@
 
 ## 1.2 — Unreleased
 
-(nothing yet)
+- Folders: copies can be filed into named folders. Each folder shows
+  as a submenu in the status bar list (click an item inside to copy
+  it); foldered items are never evicted by the size limit. The ⌘⇧C
+  window gets a "Save to" folder picker with inline "New Folder…";
+  Settings → History shows each item's folder and adds a "Move to…"
+  menu for the selection (with New Folder); Settings → General gets a
+  Folders section to create and delete folders (deleting keeps the
+  items, just unfiles them). Old history files load unchanged.
 
 ## 1.1 — 2026-08-01
 

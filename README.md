@@ -21,6 +21,12 @@
   copies. ⌥-click again to unpin, or just click the star next to any
   row in Settings → History. The list shows a hint for the ⌥/⇧
   gestures at the bottom.
+- **Folders**: organize copies into named folders — each folder shows
+  as a submenu in the list, and foldered items are never evicted.
+  File things from the ⌘⇧C window ("Save to" + "New Folder…"), or
+  select rows in Settings → History and use "Move to…". Create and
+  delete folders in Settings → General (deleting a folder keeps its
+  items).
 - **Edit before copy**: press **⌘⇧C** anywhere to tweak whatever is on
   the clipboard in a small editor — ⌘↩ puts the edited text on the
   clipboard (and in history; the original item stays), and a

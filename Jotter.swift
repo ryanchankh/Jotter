@@ -30,11 +30,13 @@ struct ClipItem: Codable, Hashable, Identifiable {
     var hash: String?           // SHA-256 of image data, used for de-duplication
     var date: Date
     var isFavorite: Bool        // favorites are pinned on top and never evicted
+    var folder: String?         // foldered items are grouped and never evicted
 
     var dedupKey: String { kind == .text ? "t:\(text)" : "i:\(hash ?? "")" }
 
     init(id: UUID, kind: Kind, text: String, imageFilename: String?,
-         hash: String?, date: Date, isFavorite: Bool = false) {
+         hash: String?, date: Date, isFavorite: Bool = false,
+         folder: String? = nil) {
         self.id = id
         self.kind = kind
         self.text = text
@@ -42,10 +44,11 @@ struct ClipItem: Codable, Hashable, Identifiable {
         self.hash = hash
         self.date = date
         self.isFavorite = isFavorite
+        self.folder = folder
     }
 
-    // Custom decoding so history.json files written before favorites
-    // existed (no isFavorite key) still load.
+    // Custom decoding so history.json files written before favorites and
+    // folders existed still load.
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id)
@@ -55,6 +58,7 @@ struct ClipItem: Codable, Hashable, Identifiable {
         hash = try c.decodeIfPresent(String.self, forKey: .hash)
         date = try c.decode(Date.self, forKey: .date)
         isFavorite = try c.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
+        folder = try c.decodeIfPresent(String.self, forKey: .folder)
     }
 }
 
@@ -87,11 +91,26 @@ final class ClipboardStore: ObservableObject {
         didSet { applyLaunchAtLogin() }
     }
 
+    /// Folder names in creation order (may include empty folders).
+    @Published var folders: [String] {
+        didSet { UserDefaults.standard.set(folders, forKey: "folders") }
+    }
+
+    /// Saved folders plus any folder names still referenced by items.
+    var allFolders: [String] {
+        var all = folders
+        for item in history {
+            if let f = item.folder, !all.contains(f) { all.append(f) }
+        }
+        return all
+    }
+
     private var loaded = false
 
     init() {
         let defaults = UserDefaults.standard
         maxItems = defaults.object(forKey: "maxItems") as? Int ?? 100
+        folders = defaults.stringArray(forKey: "folders") ?? []
 
         let appSupport = FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -179,15 +198,40 @@ final class ClipboardStore: ObservableObject {
 
     // MARK: Mutations
 
-    /// Keeps every favorite; newest non-favorites fill the remaining slots.
+    /// Keeps every favorite and every foldered item; the newest of the
+    /// rest fill the remaining slots.
     private func trimmed(_ items: [ClipItem]) -> [ClipItem] {
-        var slots = max(maxItems - items.filter(\.isFavorite).count, 0)
+        let kept = items.filter { $0.isFavorite || $0.folder != nil }.count
+        var slots = max(maxItems - kept, 0)
         return items.filter { item in
-            if item.isFavorite { return true }
+            if item.isFavorite || item.folder != nil { return true }
             guard slots > 0 else { return false }
             slots -= 1
             return true
         }
+    }
+
+    // MARK: Folders
+
+    func createFolder(_ name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !allFolders.contains(trimmed) else { return }
+        folders.append(trimmed)
+    }
+
+    /// Removes the folder; its items stay in history, just unfiled.
+    func deleteFolder(_ name: String) {
+        folders.removeAll { $0 == name }
+        var h = history
+        for i in h.indices where h[i].folder == name { h[i].folder = nil }
+        history = h
+    }
+
+    func setFolder(ids: Set<UUID>, _ folder: String?) {
+        if let folder { createFolder(folder) }
+        var h = history
+        for i in h.indices where ids.contains(h[i].id) { h[i].folder = folder }
+        history = h
     }
 
     func toggleFavorite(ids: Set<UUID>) {
@@ -208,11 +252,12 @@ final class ClipboardStore: ObservableObject {
 
     func addText(_ str: String) {
         var h = history
-        let wasFavorite = h.first { $0.dedupKey == "t:\(str)" }?.isFavorite ?? false
+        let existing = h.first { $0.dedupKey == "t:\(str)" }
         h.removeAll { $0.dedupKey == "t:\(str)" }
         h.insert(ClipItem(id: UUID(), kind: .text, text: str,
                           imageFilename: nil, hash: nil, date: Date(),
-                          isFavorite: wasFavorite), at: 0)
+                          isFavorite: existing?.isFavorite ?? false,
+                          folder: existing?.folder), at: 0)
         history = trimmed(h)
     }
 
@@ -386,6 +431,7 @@ func makeSettingsWindow(store: ClipboardStore) -> NSWindow {
 
 struct GeneralTab: View {
     @ObservedObject var store: ClipboardStore
+    @State private var newFolder = ""
 
     var body: some View {
         Form {
@@ -414,8 +460,42 @@ struct GeneralTab: View {
                     }
                 }
             }
+
+            Section("Folders") {
+                ForEach(store.allFolders, id: \.self) { name in
+                    HStack {
+                        Label(name, systemImage: "folder")
+                        Spacer()
+                        let count = store.history.filter { $0.folder == name }.count
+                        Text("\(count) item\(count == 1 ? "" : "s")")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Button {
+                            store.deleteFolder(name)
+                        } label: {
+                            Image(systemName: "minus.circle.fill")
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Delete folder (its items stay in history)")
+                    }
+                }
+                HStack {
+                    TextField("New folder name", text: $newFolder)
+                        .textFieldStyle(.roundedBorder)
+                        .onSubmit(addFolder)
+                    Button("Add", action: addFolder)
+                        .disabled(newFolder
+                            .trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
         }
         .formStyle(.grouped)
+    }
+
+    private func addFolder() {
+        store.createFolder(newFolder)
+        newFolder = ""
     }
 
     private func pickFolder() {
@@ -433,6 +513,8 @@ struct GeneralTab: View {
 struct HistoryTab: View {
     @ObservedObject var store: ClipboardStore
     @State private var selection = Set<UUID>()
+    @State private var showNewFolderAlert = false
+    @State private var newFolderName = ""
 
     private var allSelectedAreFavorites: Bool {
         !selection.isEmpty && store.history
@@ -488,6 +570,9 @@ struct HistoryTab: View {
                                 if item.kind == .text {
                                     Text("\(item.text.count) chars")
                                 }
+                                if let folder = item.folder {
+                                    Label(folder, systemImage: "folder")
+                                }
                             }
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -503,7 +588,7 @@ struct HistoryTab: View {
             Divider()
 
             HStack {
-                Button("Delete Selected") {
+                Button("Delete") {
                     store.delete(ids: selection)
                     selection.removeAll()
                 }
@@ -513,6 +598,17 @@ struct HistoryTab: View {
                     store.toggleFavorite(ids: selection)
                 }
                 .disabled(selection.isEmpty)
+
+                Menu("Move to…") {
+                    ForEach(store.allFolders, id: \.self) { name in
+                        Button(name) { store.setFolder(ids: selection, name) }
+                    }
+                    if !store.allFolders.isEmpty { Divider() }
+                    Button("No Folder") { store.setFolder(ids: selection, nil) }
+                    Button("New Folder…") { showNewFolderAlert = true }
+                }
+                .disabled(selection.isEmpty)
+                .fixedSize()
 
                 Spacer()
 
@@ -531,6 +627,21 @@ struct HistoryTab: View {
                 .disabled(store.history.isEmpty)
             }
             .padding(12)
+        }
+        .alert("New Folder", isPresented: $showNewFolderAlert) {
+            TextField("Folder name", text: $newFolderName)
+            Button("Create & Move") {
+                let name = newFolderName
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if !name.isEmpty {
+                    store.createFolder(name)
+                    store.setFolder(ids: selection, name)
+                }
+                newFolderName = ""
+            }
+            Button("Cancel", role: .cancel) { newFolderName = "" }
+        } message: {
+            Text("The selected items will move into the new folder.")
         }
     }
 }
@@ -588,7 +699,11 @@ struct AboutTab: View {
 struct EditView: View {
     @State var text: String
     @State var favorite: Bool
-    var onCopy: (String, Bool) -> Void
+    @State var folder: String?
+    @State var folders: [String]
+    @State private var newFolderName = ""
+    @State private var showNewFolder = false
+    var onCopy: (String, Bool, String?) -> Void
     var onCancel: () -> Void
 
     var body: some View {
@@ -598,22 +713,54 @@ struct EditView: View {
                 .overlay(RoundedRectangle(cornerRadius: 6)
                     .stroke(Color.gray.opacity(0.35), lineWidth: 1))
 
-            HStack {
+            HStack(spacing: 10) {
                 Toggle("★ Favorite", isOn: $favorite)
                     .toggleStyle(.checkbox)
+                Picker("Save to:", selection: $folder) {
+                    Text("No Folder").tag(String?.none)
+                    ForEach(folders, id: \.self) { name in
+                        Text(name).tag(String?.some(name))
+                    }
+                }
+                .fixedSize()
+                Button("New Folder…") { showNewFolder.toggle() }
                 Spacer()
+            }
+
+            if showNewFolder {
+                HStack {
+                    TextField("Folder name", text: $newFolderName)
+                        .textFieldStyle(.roundedBorder)
+                        .onSubmit(createFolder)
+                    Button("Create", action: createFolder)
+                        .disabled(newFolderName
+                            .trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+
+            HStack {
                 Text("⌘↩ copies · esc cancels")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Spacer()
                 Button("Cancel", action: onCancel)
                     .keyboardShortcut(.cancelAction)
-                Button("Copy") { onCopy(text, favorite) }
+                Button("Copy") { onCopy(text, favorite, folder) }
                     .keyboardShortcut(.return, modifiers: .command)
                     .buttonStyle(.borderedProminent)
             }
         }
         .padding(14)
-        .frame(width: 480, height: 300)
+        .frame(width: 480, height: 340)
+    }
+
+    private func createFolder() {
+        let name = newFolderName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        if !folders.contains(name) { folders.append(name) }
+        folder = name
+        newFolderName = ""
+        showNewFolder = false
     }
 }
 
@@ -672,6 +819,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         refreshHistoryItems()
 
         store.$history
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.refreshHistoryItems() }
+            .store(in: &cancellables)
+
+        store.$folders
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.refreshHistoryItems() }
             .store(in: &cancellables)
@@ -878,11 +1030,152 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
 
     // MARK: Menu building
 
+    /// Appends the row for one item — plus its ⌥ (favorite) and ⇧ (edit)
+    /// alternates — to a menu. Text rows consume a 1–9 shortcut from
+    /// `shortcut` while it is ≤ 9. Rows identify their item by id, so the
+    /// same builder serves the top level and folder submenus.
+    func addMenuRows(for item: ClipItem, to target: NSMenu, shortcut: inout Int) {
+        let menuItem: NSMenuItem
+        let star = item.isFavorite ? "★ " : ""
+
+        switch item.kind {
+        case .text:
+            let oneLine = item.text.replacingOccurrences(of: "\n", with: " ")
+            let title = star
+                + (oneLine.count > 40 ? String(oneLine.prefix(40)) + "…" : oneLine)
+            menuItem = NSMenuItem(title: title,
+                                  action: #selector(copyItem(_:)),
+                                  keyEquivalent: "")
+            menuItem.target = self
+            if shortcut <= 9 {
+                menuItem.keyEquivalent = "\(shortcut)"
+                menuItem.keyEquivalentModifierMask = []
+                shortcut += 1
+            }
+            // Copied colors render in their own color, with a swatch.
+            if let color = ColorParser.parse(item.text) {
+                menuItem.attributedTitle = NSAttributedString(
+                    string: title,
+                    attributes: [.foregroundColor: color,
+                                 .font: NSFont.menuFont(ofSize: 0)])
+                menuItem.image = ColorParser.swatch(color)
+            }
+            menuItem.toolTip = item.text
+
+        case .image:
+            // Hover opens a submenu with a large preview.
+            // Items with submenus can't take a click action themselves,
+            // so the preview (and a "Copy Image" row) do the copying.
+            menuItem = NSMenuItem(title: star + item.text,
+                                  action: nil, keyEquivalent: "")
+            menuItem.image = thumbnail(for: item)
+
+            let sub = NSMenu()
+            let previewItem = NSMenuItem(title: "",
+                                         action: #selector(copyItem(_:)),
+                                         keyEquivalent: "")
+            previewItem.target = self
+            previewItem.representedObject = item.id
+            previewItem.image = preview(for: item)
+            sub.addItem(previewItem)
+            sub.addItem(.separator())
+
+            let copy = NSMenuItem(title: "Copy Image",
+                                  action: #selector(copyItem(_:)),
+                                  keyEquivalent: "")
+            copy.target = self
+            copy.representedObject = item.id
+            sub.addItem(copy)
+
+            menuItem.submenu = sub
+        }
+
+        menuItem.representedObject = item.id
+        target.addItem(menuItem)
+
+        // Hold ⌥ and the row becomes a favorite toggle (so does ⌥1–⌥9).
+        let alt = NSMenuItem(title: item.isFavorite ? "☆ Unfavorite" : "★ Favorite",
+                             action: #selector(toggleFavorite(_:)),
+                             keyEquivalent: menuItem.keyEquivalent)
+        alt.target = self
+        alt.representedObject = item.id
+        alt.keyEquivalentModifierMask = [.option]
+        alt.isAlternate = true
+        alt.image = menuItem.image
+        target.addItem(alt)
+
+        // Hold ⇧ and a text row becomes "edit before copy" (⇧1–⇧9 too).
+        if item.kind == .text {
+            let edit = NSMenuItem(title: "✎ Edit & Copy…",
+                                  action: #selector(editItem(_:)),
+                                  keyEquivalent: menuItem.keyEquivalent)
+            edit.target = self
+            edit.representedObject = item.id
+            edit.keyEquivalentModifierMask = [.shift]
+            edit.isAlternate = true
+            edit.image = menuItem.image
+            target.addItem(edit)
+        }
+    }
+
     func refreshHistoryItems() {
         while menu.items.count > 1 { menu.removeItem(at: 1) }
 
-        let items = filteredHistory
-        if items.isEmpty {
+        var shortcut = 1
+        var anyRows = false
+
+        if query.isEmpty {
+            let favorites = store.history.filter(\.isFavorite)
+            let folders = store.allFolders
+            let rest = store.history.filter { !$0.isFavorite && $0.folder == nil }
+            anyRows = !favorites.isEmpty || !folders.isEmpty || !rest.isEmpty
+
+            // ★ favorites block on top.
+            for item in favorites {
+                addMenuRows(for: item, to: menu, shortcut: &shortcut)
+            }
+
+            // One submenu per folder; click an item inside to copy it.
+            for folder in folders {
+                let contents = store.history.filter { $0.folder == folder }
+                let folderItem = NSMenuItem(title: folder, action: nil,
+                                            keyEquivalent: "")
+                folderItem.image = NSImage(systemSymbolName: "folder",
+                                           accessibilityDescription: nil)
+                let sub = NSMenu()
+                if contents.isEmpty {
+                    let empty = NSMenuItem(title: "Empty", action: nil,
+                                           keyEquivalent: "")
+                    empty.isEnabled = false
+                    sub.addItem(empty)
+                }
+                var noShortcut = 10   // no 1–9 shortcuts inside folders
+                for item in contents {
+                    addMenuRows(for: item, to: sub, shortcut: &noShortcut)
+                }
+                folderItem.submenu = sub
+                menu.addItem(folderItem)
+            }
+
+            if (!favorites.isEmpty || !folders.isEmpty) && !rest.isEmpty {
+                menu.addItem(.separator())
+            }
+
+            // Recent unfiled copies.
+            for item in rest {
+                addMenuRows(for: item, to: menu, shortcut: &shortcut)
+            }
+        } else {
+            // Search is flat: favorites first, then by fuzzy score,
+            // foldered items included.
+            let results = filteredHistory
+            anyRows = !results.isEmpty
+            for item in results {
+                addMenuRows(for: item, to: menu, shortcut: &shortcut)
+            }
+        }
+
+        if !anyRows {
             let empty = NSMenuItem(
                 title: query.isEmpty ? "No items yet" : "No matches",
                 action: nil, keyEquivalent: "")
@@ -890,100 +1183,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
             menu.addItem(empty)
         }
 
-        let favoriteCount = items.filter(\.isFavorite).count
-
-        for (index, item) in items.enumerated() {
-            // Favorites sit in their own block above a separator.
-            if index == favoriteCount, favoriteCount > 0 {
-                menu.addItem(.separator())
-            }
-
-            let menuItem: NSMenuItem
-            let star = item.isFavorite ? "★ " : ""
-
-            switch item.kind {
-            case .text:
-                let oneLine = item.text.replacingOccurrences(of: "\n", with: " ")
-                let title = star
-                    + (oneLine.count > 40 ? String(oneLine.prefix(40)) + "…" : oneLine)
-                menuItem = NSMenuItem(title: title,
-                                      action: #selector(copyItem(_:)),
-                                      keyEquivalent: "")
-                menuItem.target = self
-                if index < 9 {
-                    menuItem.keyEquivalent = "\(index + 1)"
-                    menuItem.keyEquivalentModifierMask = []
-                }
-                // Copied colors render in their own color, with a swatch.
-                if let color = ColorParser.parse(item.text) {
-                    menuItem.attributedTitle = NSAttributedString(
-                        string: title,
-                        attributes: [.foregroundColor: color,
-                                     .font: NSFont.menuFont(ofSize: 0)])
-                    menuItem.image = ColorParser.swatch(color)
-                }
-                menuItem.toolTip = item.text
-
-            case .image:
-                // Hover opens a submenu with a large preview.
-                // Items with submenus can't take a click action themselves,
-                // so the preview (and a "Copy Image" row) do the copying.
-                menuItem = NSMenuItem(title: star + item.text,
-                                      action: nil, keyEquivalent: "")
-                menuItem.image = thumbnail(for: item)
-
-                let sub = NSMenu()
-                let previewItem = NSMenuItem(title: "",
-                                             action: #selector(copyItem(_:)),
-                                             keyEquivalent: "")
-                previewItem.target = self
-                previewItem.tag = index
-                previewItem.image = preview(for: item)
-                sub.addItem(previewItem)
-                sub.addItem(.separator())
-
-                let copy = NSMenuItem(title: "Copy Image",
-                                      action: #selector(copyItem(_:)),
-                                      keyEquivalent: "")
-                copy.target = self
-                copy.tag = index
-                sub.addItem(copy)
-
-                menuItem.submenu = sub
-            }
-
-            menuItem.tag = index
-            menu.addItem(menuItem)
-
-            // Hold ⌥ and the row becomes a favorite toggle (so does ⌥1–⌥9).
-            let alt = NSMenuItem(title: item.isFavorite ? "☆ Unfavorite" : "★ Favorite",
-                                 action: #selector(toggleFavorite(_:)),
-                                 keyEquivalent: menuItem.keyEquivalent)
-            alt.target = self
-            alt.tag = index
-            alt.keyEquivalentModifierMask = [.option]
-            alt.isAlternate = true
-            alt.image = menuItem.image
-            menu.addItem(alt)
-
-            // Hold ⇧ and a text row becomes "edit before copy" (⇧1–⇧9 too).
-            if item.kind == .text {
-                let edit = NSMenuItem(title: "✎ Edit & Copy…",
-                                      action: #selector(editItem(_:)),
-                                      keyEquivalent: menuItem.keyEquivalent)
-                edit.target = self
-                edit.tag = index
-                edit.keyEquivalentModifierMask = [.shift]
-                edit.isAlternate = true
-                edit.image = menuItem.image
-                menu.addItem(edit)
-            }
-        }
-
         menu.addItem(.separator())
 
         // Discoverability: the ⌥/⇧ row gestures are otherwise invisible.
-        if !items.isEmpty {
+        if anyRows {
             let hint = NSMenuItem(title: "", action: nil, keyEquivalent: "")
             hint.attributedTitle = NSAttributedString(
                 string: "hold ⌥ to favorite/unfavorite · ⇧ to edit",
@@ -1021,10 +1224,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
 
     // MARK: Actions
 
+    private func clipItem(for sender: NSMenuItem) -> ClipItem? {
+        guard let id = sender.representedObject as? UUID else { return nil }
+        return store.history.first { $0.id == id }
+    }
+
     @objc func copyItem(_ sender: NSMenuItem) {
-        let items = filteredHistory
-        guard items.indices.contains(sender.tag) else { return }
-        let item = items[sender.tag]
+        guard let item = clipItem(for: sender) else { return }
 
         let pb = NSPasteboard.general
         pb.clearContents()
@@ -1041,9 +1247,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
     }
 
     @objc func toggleFavorite(_ sender: NSMenuItem) {
-        let items = filteredHistory
-        guard items.indices.contains(sender.tag) else { return }
-        store.toggleFavorite(ids: [items[sender.tag].id])
+        guard let item = clipItem(for: sender) else { return }
+        store.toggleFavorite(ids: [item.id])
     }
 
     // MARK: Edit before copy
@@ -1058,20 +1263,22 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
 
     /// ⇧-click on a list item: edit that item, then copy the result.
     @objc func editItem(_ sender: NSMenuItem) {
-        let items = filteredHistory
-        guard items.indices.contains(sender.tag) else { return }
-        presentEditor(text: items[sender.tag].text)
+        guard let item = clipItem(for: sender) else { return }
+        presentEditor(text: item.text)
     }
 
     func presentEditor(text original: String) {
         editWindow?.close()
-        let alreadyFavorite = store.history
-            .first { $0.kind == .text && $0.text == original }?.isFavorite ?? false
+        let existing = store.history
+            .first { $0.kind == .text && $0.text == original }
         let view = EditView(
             text: original,
-            favorite: alreadyFavorite,
-            onCopy: { [weak self] edited, favorite in
-                self?.finishEdit(edited, original: original, favorite: favorite)
+            favorite: existing?.isFavorite ?? false,
+            folder: existing?.folder,
+            folders: store.allFolders,
+            onCopy: { [weak self] edited, favorite, folder in
+                self?.finishEdit(edited, original: original,
+                                 favorite: favorite, folder: folder)
             },
             onCancel: { [weak self] in self?.editWindow?.close() })
         let window = NSWindow(contentViewController: NSHostingController(rootView: view))
@@ -1085,7 +1292,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         window.orderFrontRegardless()
     }
 
-    func finishEdit(_ edited: String, original: String, favorite: Bool) {
+    func finishEdit(_ edited: String, original: String,
+                    favorite: Bool, folder: String?) {
         defer { editWindow?.close() }
         guard !edited.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         else { return }
@@ -1094,10 +1302,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         if !store.history.contains(where: { $0.kind == .text && $0.text == edited }) {
             store.addText(edited)
         }
-        let ids = store.history
+        let ids = Set(store.history
             .filter { $0.kind == .text && $0.text == edited }
-            .map(\.id)
-        store.setFavorite(ids: Set(ids), favorite)
+            .map(\.id))
+        store.setFavorite(ids: ids, favorite)
+        store.setFolder(ids: ids, folder)
         let pb = NSPasteboard.general
         pb.clearContents()
         pb.setString(edited, forType: .string)
