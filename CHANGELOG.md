@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2 — Unreleased
+
+(nothing yet)
+
 ## 1.1 — 2026-08-01
 
 - Favorites: ⌥-click any item in the list (or ⌥1–⌥9) to pin it — it
