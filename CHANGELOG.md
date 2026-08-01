@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.1 — Unreleased
+## 1.1 — 2026-08-01
 
 - Favorites: ⌥-click any item in the list (or ⌥1–⌥9) to pin it — it
   shows a ★, stays above a separator at the top of the list, keeps the
