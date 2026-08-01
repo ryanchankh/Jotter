@@ -18,7 +18,9 @@
   or press **1–9** to grab an item instantly
 - **Favorites**: ⌥-click an item (or press ⌥1–⌥9) to pin it — it gets
   a ★, stays at the top of the list, and is never pushed out by new
-  copies. ⌥-click again to unpin.
+  copies. ⌥-click again to unpin, or just click the star next to any
+  row in Settings → History. The list shows a hint for the ⌥/⇧
+  gestures at the bottom.
 - **Edit before copy**: press **⌘⇧C** anywhere to tweak whatever is on
   the clipboard in a small editor — ⌘↩ puts the edited text on the
   clipboard (and in history; the original item stays), and a

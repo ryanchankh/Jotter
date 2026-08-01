@@ -452,6 +452,17 @@ struct HistoryTab: View {
                 List(selection: $selection) {
                     ForEach(store.history) { item in
                         HStack(spacing: 8) {
+                            Button {
+                                store.toggleFavorite(ids: [item.id])
+                            } label: {
+                                Image(systemName: item.isFavorite ? "star.fill" : "star")
+                                    .foregroundStyle(item.isFavorite
+                                                     ? AnyShapeStyle(.yellow)
+                                                     : AnyShapeStyle(.quaternary))
+                            }
+                            .buttonStyle(.plain)
+                            .help(item.isFavorite ? "Unfavorite" : "Favorite")
+
                             if item.kind == .image,
                                let url = store.imageURL(for: item),
                                let nsImage = NSImage(contentsOf: url) {
@@ -464,11 +475,6 @@ struct HistoryTab: View {
                                 RoundedRectangle(cornerRadius: 3)
                                     .fill(Color(nsColor: color))
                                     .frame(width: 14, height: 14)
-                            }
-                            if item.isFavorite {
-                                Image(systemName: "star.fill")
-                                    .font(.caption)
-                                    .foregroundStyle(.yellow)
                             }
                             Text(item.text.replacingOccurrences(of: "\n", with: " "))
                                 .lineLimit(1)
@@ -975,6 +981,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         }
 
         menu.addItem(.separator())
+
+        // Discoverability: the ⌥/⇧ row gestures are otherwise invisible.
+        if !items.isEmpty {
+            let hint = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+            hint.attributedTitle = NSAttributedString(
+                string: "hold ⌥ to favorite/unfavorite · ⇧ to edit",
+                attributes: [
+                    .font: NSFont.menuFont(ofSize: NSFont.smallSystemFontSize),
+                    .foregroundColor: NSColor.secondaryLabelColor,
+                ])
+            menu.addItem(hint)
+        }
 
         let historyItem = NSMenuItem(title: "History…",
                                      action: #selector(openHistory),

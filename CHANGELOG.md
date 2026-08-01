@@ -5,8 +5,9 @@
 - Favorites: ⌥-click any item in the list (or ⌥1–⌥9) to pin it — it
   shows a ★, stays above a separator at the top of the list, keeps the
   low 1–9 shortcuts, and is never evicted when history reaches its
-  size limit. Settings → History gets a ★ Favorite button and star
-  badges. Old history files load unchanged.
+  size limit. In Settings → History every row has a clickable star to
+  pin/unpin in one click (plus a bulk ★ Favorite button), and the list
+  shows a hint for the ⌥/⇧ gestures. Old history files load unchanged.
 - Edit before copy: ⌘⇧C opens the current clipboard text in a small
   editor; ⌘↩ copies the result and adds it to history without touching
   the original item, and a ★ Favorite checkbox pins (or unpins) the
