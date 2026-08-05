@@ -2,6 +2,11 @@
 
 ## 1.2 — Unreleased
 
+- Settings → History is now a folder browser: a sidebar with All
+  Items, Favorites, and every folder (with item counts) filters the
+  list, and empty views explain how to file things. A one-time
+  "Examples" folder with two sample snippets shows how the feature
+  works — delete it whenever.
 - The status bar list stays screen-sized: it shows the 15 most recent
   copies (and search matches), with the rest in a "More (N)…" submenu.
 

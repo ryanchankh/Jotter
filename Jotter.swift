@@ -125,6 +125,26 @@ final class ClipboardStore: ObservableObject {
 
         history = loadHistoryFromDisk()
         loaded = true
+        seedExamplesIfNeeded()
+    }
+
+    /// One-time starter folder so the feature explains itself. Deletable
+    /// like anything else; never recreated.
+    private func seedExamplesIfNeeded() {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: "seededExamples") else { return }
+        defaults.set(true, forKey: "seededExamples")
+        createFolder("Examples")
+        let samples = [
+            "Snippets you reuse — addresses, commands, emails — live in "
+                + "folders like this one, and are never pushed out by new copies.",
+            "To file a copy: copy it, press ⌘⇧C, pick a folder, hit ⌘↩. "
+                + "Or select rows in Settings → History and use “Move to…”.",
+        ]
+        history.append(contentsOf: samples.map {
+            ClipItem(id: UUID(), kind: .text, text: $0, imageFilename: nil,
+                     hash: nil, date: Date(), folder: "Examples")
+        })
     }
 
     var historyFileURL: URL {
@@ -392,7 +412,7 @@ func makeSettingsWindow(store: ClipboardStore) -> NSWindow {
     tabs.tabStyle = .toolbar
 
     let historyVC = NSHostingController(
-        rootView: HistoryTab(store: store).frame(width: 480, height: 420))
+        rootView: HistoryTab(store: store).frame(width: 560, height: 420))
     historyVC.title = "History"        // becomes the window title for this tab
     let history = NSTabViewItem(viewController: historyVC)
     history.label = "History"
@@ -401,7 +421,7 @@ func makeSettingsWindow(store: ClipboardStore) -> NSWindow {
     tabs.addTabViewItem(history)
 
     let generalVC = NSHostingController(
-        rootView: GeneralTab(store: store).frame(width: 480, height: 420))
+        rootView: GeneralTab(store: store).frame(width: 560, height: 420))
     generalVC.title = "General"
     let general = NSTabViewItem(viewController: generalVC)
     general.label = "General"
@@ -410,7 +430,7 @@ func makeSettingsWindow(store: ClipboardStore) -> NSWindow {
     tabs.addTabViewItem(general)
 
     let aboutVC = NSHostingController(
-        rootView: AboutTab().frame(width: 480, height: 420))
+        rootView: AboutTab().frame(width: 560, height: 420))
     aboutVC.title = "About"
     let about = NSTabViewItem(viewController: aboutVC)
     about.label = "About"
@@ -424,7 +444,7 @@ func makeSettingsWindow(store: ClipboardStore) -> NSWindow {
     window.isReleasedWhenClosed = false
     // The tab controller's fitting size reserves room for an in-content tab
     // picker even in toolbar style; pin the content to the tabs' real size.
-    window.setContentSize(NSSize(width: 480, height: 420))
+    window.setContentSize(NSSize(width: 560, height: 420))
     window.center()
     return window
 }
@@ -515,6 +535,33 @@ struct HistoryTab: View {
     @State private var selection = Set<UUID>()
     @State private var showNewFolderAlert = false
     @State private var newFolderName = ""
+    @State private var source: Source? = .all
+
+    /// What the sidebar is browsing: everything, favorites, or one folder.
+    enum Source: Hashable {
+        case all, favorites, folder(String)
+    }
+
+    private var browsedItems: [ClipItem] {
+        switch source ?? .all {
+        case .all: return store.history
+        case .favorites: return store.history.filter(\.isFavorite)
+        case .folder(let name): return store.history.filter { $0.folder == name }
+        }
+    }
+
+    private var emptyMessage: String {
+        switch source ?? .all {
+        case .all:
+            return "No saved items"
+        case .favorites:
+            return "No favorites yet — ⌥-click an item in the list, "
+                + "or click a row's star here."
+        case .folder(let name):
+            return "Nothing in “\(name)” yet — copy something, press ⌘⇧C "
+                + "and pick this folder, or select rows and use “Move to…”."
+        }
+    }
 
     private var allSelectedAreFavorites: Bool {
         !selection.isEmpty && store.history
@@ -523,16 +570,59 @@ struct HistoryTab: View {
     }
 
     var body: some View {
+        HStack(spacing: 0) {
+            List(selection: $source) {
+                Label("All Items", systemImage: "tray.full")
+                    .badge(store.history.count)
+                    .tag(Source.all)
+                Label("Favorites", systemImage: "star")
+                    .badge(store.history.filter(\.isFavorite).count)
+                    .tag(Source.favorites)
+                Section("Folders") {
+                    ForEach(store.allFolders, id: \.self) { name in
+                        Label(name, systemImage: "folder")
+                            .badge(store.history.filter { $0.folder == name }.count)
+                            .tag(Source.folder(name))
+                    }
+                }
+            }
+            .listStyle(.sidebar)
+            .frame(width: 160)
+
+            Divider()
+
+            browserPane
+        }
+        .alert("New Folder", isPresented: $showNewFolderAlert) {
+            TextField("Folder name", text: $newFolderName)
+            Button("Create & Move") {
+                let name = newFolderName
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if !name.isEmpty {
+                    store.createFolder(name)
+                    store.setFolder(ids: selection, name)
+                }
+                newFolderName = ""
+            }
+            Button("Cancel", role: .cancel) { newFolderName = "" }
+        } message: {
+            Text("The selected items will move into the new folder.")
+        }
+    }
+
+    private var browserPane: some View {
         VStack(spacing: 0) {
-            if store.history.isEmpty {
+            if browsedItems.isEmpty {
                 Spacer()
-                Text("No saved items")
+                Text(emptyMessage)
                     .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 320)
                     .frame(maxWidth: .infinity, alignment: .center)
                 Spacer()
             } else {
                 List(selection: $selection) {
-                    ForEach(store.history) { item in
+                    ForEach(browsedItems) { item in
                         HStack(spacing: 8) {
                             Button {
                                 store.toggleFavorite(ids: [item.id])
@@ -612,14 +702,6 @@ struct HistoryTab: View {
 
                 Spacer()
 
-                Text(selection.isEmpty
-                     ? "\(store.history.count) items"
-                     : "\(selection.count) of \(store.history.count) selected")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Spacer()
-
                 Button("Delete All", role: .destructive) {
                     store.clear()
                     selection.removeAll()
@@ -627,21 +709,6 @@ struct HistoryTab: View {
                 .disabled(store.history.isEmpty)
             }
             .padding(12)
-        }
-        .alert("New Folder", isPresented: $showNewFolderAlert) {
-            TextField("Folder name", text: $newFolderName)
-            Button("Create & Move") {
-                let name = newFolderName
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                if !name.isEmpty {
-                    store.createFolder(name)
-                    store.setFolder(ids: selection, name)
-                }
-                newFolderName = ""
-            }
-            Button("Cancel", role: .cancel) { newFolderName = "" }
-        } message: {
-            Text("The selected items will move into the new folder.")
         }
     }
 }

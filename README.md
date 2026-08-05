@@ -28,7 +28,9 @@
   File things from the ⌘⇧C window ("Save to" + "New Folder…"), or
   select rows in Settings → History and use "Move to…". Create and
   delete folders in Settings → General (deleting a folder keeps its
-  items).
+  items). The History tab is a browser — pick All Items, Favorites,
+  or a folder in its sidebar. A starter "Examples" folder shows how
+  filing works; delete it whenever.
 - **Edit before copy**: press **⌘⇧C** anywhere to tweak whatever is on
   the clipboard in a small editor — ⌘↩ puts the edited text on the
   clipboard (and in history; the original item stays), and a
