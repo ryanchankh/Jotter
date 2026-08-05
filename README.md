@@ -11,7 +11,9 @@
 
 ## Features
 
-- Watches the clipboard and keeps your recent copies (text **and** images)
+- Watches the clipboard and keeps your recent copies (text **and**
+  images) — the list shows the 15 most recent, with the rest tucked
+  into a "More…" submenu so the menu never outgrows the screen
 - Click the menu bar icon → list opens with a fuzzy search field focused
   ("cbm" matches "ClipboardManager")
 - Press **⌘⇧V** anywhere → keyboard-first list: navigate with ↑/↓ + Return,

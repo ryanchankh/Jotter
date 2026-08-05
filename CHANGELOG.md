@@ -2,6 +2,9 @@
 
 ## 1.2 — Unreleased
 
+- The status bar list stays screen-sized: it shows the 15 most recent
+  copies (and search matches), with the rest in a "More (N)…" submenu.
+
 - Folders: copies can be filed into named folders. Each folder shows
   as a submenu in the status bar list (click an item inside to copy
   it); foldered items are never evicted by the size limit. The ⌘⇧C

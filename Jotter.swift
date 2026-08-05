@@ -1030,6 +1030,33 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
 
     // MARK: Menu building
 
+    /// The list shows at most this many recent rows; the rest live in a
+    /// "More…" submenu so the menu never outgrows the screen.
+    let maxVisibleRows = 15
+
+    /// Appends `items` to `target`, overflowing beyond `maxVisibleRows`
+    /// into a trailing "More (N)…" submenu.
+    func addRowsWithOverflow(_ items: [ClipItem], to target: NSMenu,
+                             shortcut: inout Int) {
+        for item in items.prefix(maxVisibleRows) {
+            addMenuRows(for: item, to: target, shortcut: &shortcut)
+        }
+        let overflow = items.dropFirst(maxVisibleRows)
+        guard !overflow.isEmpty else { return }
+
+        let more = NSMenuItem(title: "More (\(overflow.count))…",
+                              action: nil, keyEquivalent: "")
+        more.image = NSImage(systemSymbolName: "ellipsis.circle",
+                             accessibilityDescription: nil)
+        let sub = NSMenu()
+        var noShortcut = 10   // no 1–9 shortcuts in the overflow
+        for item in overflow {
+            addMenuRows(for: item, to: sub, shortcut: &noShortcut)
+        }
+        more.submenu = sub
+        target.addItem(more)
+    }
+
     /// Appends the row for one item — plus its ⌥ (favorite) and ⇧ (edit)
     /// alternates — to a menu. Text rows consume a 1–9 shortcut from
     /// `shortcut` while it is ≤ 9. Rows identify their item by id, so the
@@ -1161,18 +1188,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
                 menu.addItem(.separator())
             }
 
-            // Recent unfiled copies.
-            for item in rest {
-                addMenuRows(for: item, to: menu, shortcut: &shortcut)
-            }
+            // Recent unfiled copies, overflowing into "More…".
+            addRowsWithOverflow(rest, to: menu, shortcut: &shortcut)
         } else {
             // Search is flat: favorites first, then by fuzzy score,
             // foldered items included.
             let results = filteredHistory
             anyRows = !results.isEmpty
-            for item in results {
-                addMenuRows(for: item, to: menu, shortcut: &shortcut)
-            }
+            addRowsWithOverflow(results, to: menu, shortcut: &shortcut)
         }
 
         if !anyRows {
