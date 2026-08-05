@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.2 — Unreleased
+## 1.2 — 2026-08-05
 
 - Settings → History is now a folder browser: a sidebar with All
   Items, Favorites, and every folder (with item counts) filters the
