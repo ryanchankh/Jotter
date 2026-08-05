@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://ryanchankh.github.io/Jotter/"><b>ryanchankh.github.io/Jotter</b></a>
+  <a href="https://ryanchankh.com/Jotter/"><b>ryanchankh.com/Jotter</b></a>
 </p>
 
 ## Features
