@@ -23,8 +23,9 @@
   copies. ⌥-click again to unpin, or just click the star next to any
   row in Settings → History. The list shows a hint for the ⌥/⇧
   gestures at the bottom.
-- **Folders**: organize copies into named folders — each folder shows
-  as a submenu in the list, and foldered items are never evicted.
+- **Folders**: organize copies into named folders — a single
+  **Storage** row in the list opens into every folder (with item
+  counts), and foldered items are never evicted.
   File things from the ⌘⇧C window ("Save to" + "New Folder…"), or
   select rows in Settings → History and use "Move to…". Create and
   delete folders in Settings → General (deleting a folder keeps its

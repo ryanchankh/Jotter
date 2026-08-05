@@ -1229,26 +1229,38 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
                 addMenuRows(for: item, to: menu, shortcut: &shortcut)
             }
 
-            // One submenu per folder; click an item inside to copy it.
-            for folder in folders {
-                let contents = store.history.filter { $0.folder == folder }
-                let folderItem = NSMenuItem(title: folder, action: nil,
-                                            keyEquivalent: "")
-                folderItem.image = NSImage(systemSymbolName: "folder",
-                                           accessibilityDescription: nil)
-                let sub = NSMenu()
-                if contents.isEmpty {
-                    let empty = NSMenuItem(title: "Empty", action: nil,
-                                           keyEquivalent: "")
-                    empty.isEnabled = false
-                    sub.addItem(empty)
+            // One "Storage" row holds every folder; each folder is a
+            // nested submenu — click an item inside to copy it.
+            if !folders.isEmpty {
+                let storage = NSMenuItem(title: "Storage", action: nil,
+                                         keyEquivalent: "")
+                storage.image = NSImage(systemSymbolName: "archivebox",
+                                        accessibilityDescription: nil)
+                let storageMenu = NSMenu()
+                for folder in folders {
+                    let contents = store.history.filter { $0.folder == folder }
+                    let title = contents.isEmpty
+                        ? folder : "\(folder) (\(contents.count))"
+                    let folderItem = NSMenuItem(title: title, action: nil,
+                                                keyEquivalent: "")
+                    folderItem.image = NSImage(systemSymbolName: "folder",
+                                               accessibilityDescription: nil)
+                    let sub = NSMenu()
+                    if contents.isEmpty {
+                        let empty = NSMenuItem(title: "Empty", action: nil,
+                                               keyEquivalent: "")
+                        empty.isEnabled = false
+                        sub.addItem(empty)
+                    }
+                    var noShortcut = 10   // no 1–9 shortcuts inside folders
+                    for item in contents {
+                        addMenuRows(for: item, to: sub, shortcut: &noShortcut)
+                    }
+                    folderItem.submenu = sub
+                    storageMenu.addItem(folderItem)
                 }
-                var noShortcut = 10   // no 1–9 shortcuts inside folders
-                for item in contents {
-                    addMenuRows(for: item, to: sub, shortcut: &noShortcut)
-                }
-                folderItem.submenu = sub
-                menu.addItem(folderItem)
+                storage.submenu = storageMenu
+                menu.addItem(storage)
             }
 
             if (!favorites.isEmpty || !folders.isEmpty) && !rest.isEmpty {
