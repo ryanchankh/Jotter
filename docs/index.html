@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jotter — clipboard history for your Mac's menu bar</title>
+<meta name="description" content="Jotter keeps every copy — text, images, colors — one keystroke away in your Mac's menu bar. Free, open source, one Swift file, and nothing ever leaves your Mac.">
+<link rel="icon" href="icon.png">
+<meta property="og:title" content="Jotter — clipboard history for your Mac's menu bar">
+<meta property="og:description" content="Free, open source, one Swift file. Press ⌘⇧V and everything you copied is right there.">
+<meta property="og:image" content="https://ryanchankh.github.io/Jotter/icon.png">
+<style>
+  :root {
+    --bg: #f2f3f5;
+    --panel: #ffffff;
+    --ink: #1b1d22;
+    --muted: #6e7480;
+    --hairline: rgba(27, 29, 34, 0.1);
+    --accent: #2e63e7;
+    --accent-ink: #ffffff;
+    --star: #d99a00;
+    --swatch: #ff5733;
+    --menu-shadow: 0 18px 50px rgba(27, 29, 34, 0.18), 0 2px 8px rgba(27, 29, 34, 0.08);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #17181c;
+      --panel: #23252c;
+      --ink: #ecedf2;
+      --muted: #9aa0ac;
+      --hairline: rgba(236, 237, 242, 0.12);
+      --accent: #6d9bff;
+      --accent-ink: #10131c;
+      --star: #f5b301;
+      --menu-shadow: 0 18px 50px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.35);
+    }
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .mono {
+    font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  }
+
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+  .wrap { max-width: 980px; margin: 0 auto; padding: 0 24px; }
+
+  /* ---------- nav ---------- */
+  nav {
+    display: flex; align-items: center; gap: 10px;
+    padding: 20px 0;
+  }
+  nav img { width: 28px; height: 28px; }
+  nav .name { font-weight: 700; font-size: 16px; }
+  nav .links { margin-left: auto; display: flex; gap: 20px; font-size: 14px; }
+
+  /* ---------- hero ---------- */
+  .hero {
+    display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 48px;
+    align-items: center; padding: 64px 0 80px;
+  }
+  .hero h1 {
+    font-size: clamp(36px, 5.4vw, 56px);
+    font-weight: 800; letter-spacing: -0.03em; line-height: 1.04;
+  }
+  .hero h1 em { font-style: normal; color: var(--accent); }
+  .hero p.sub {
+    margin-top: 18px; font-size: 17px; color: var(--muted); max-width: 46ch;
+  }
+  .hero p.sub kbd {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 14px; color: var(--ink);
+    background: var(--panel); border: 1px solid var(--hairline);
+    border-bottom-width: 2px; border-radius: 5px; padding: 1px 6px;
+  }
+  .cta-row { margin-top: 28px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  .btn {
+    display: inline-block; font-size: 15px; font-weight: 600;
+    padding: 11px 20px; border-radius: 10px; border: 1px solid transparent;
+  }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); }
+  .btn.primary:hover { text-decoration: none; filter: brightness(1.08); }
+  .btn.ghost { border-color: var(--hairline); color: var(--ink); background: var(--panel); }
+  .btn.ghost:hover { text-decoration: none; border-color: var(--muted); }
+  .meta-line { margin-top: 14px; font-size: 13px; color: var(--muted); }
+
+  /* ---------- the menu replica ---------- */
+  .menu-demo { display: flex; justify-content: center; }
+  .menu {
+    width: 300px; background: var(--panel);
+    border: 1px solid var(--hairline); border-radius: 12px;
+    box-shadow: var(--menu-shadow);
+    padding: 6px; font-size: 13.5px;
+  }
+
+  .menu .search {
+    display: flex; align-items: center; gap: 6px;
+    margin: 4px 6px 6px; padding: 5px 9px;
+    border: 1px solid var(--hairline); border-radius: 7px;
+    color: var(--muted); background: var(--bg);
+  }
+  .menu .row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 4px 10px; border-radius: 6px; cursor: default;
+    white-space: nowrap; overflow: hidden;
+  }
+  .menu .row .txt { overflow: hidden; text-overflow: ellipsis; }
+  .menu .row .key { margin-left: auto; color: var(--muted); font-size: 12.5px; padding-left: 12px; }
+  .menu .row:hover { background: var(--accent); color: var(--accent-ink); }
+  .menu .row:hover .key, .menu .row:hover .color-text { color: inherit; }
+  .menu .sep { height: 1px; background: var(--hairline); margin: 5px 10px; }
+  .menu .hint { padding: 2px 10px 4px; font-size: 11.5px; color: var(--muted); }
+  .menu .star { color: var(--star); }
+  .menu .row:hover .star { color: inherit; }
+  .menu .swatch {
+    width: 13px; height: 13px; border-radius: 3.5px; flex: none;
+    background: var(--swatch); border: 1px solid rgba(0,0,0,0.15);
+  }
+  .menu .color-text { color: var(--swatch); }
+  .menu .thumb {
+    width: 22px; height: 16px; border-radius: 3px; flex: none;
+    background: linear-gradient(135deg, #7fc7ff, #2e63e7 60%, #163a8f);
+  }
+
+  /* ---------- features as a history list ---------- */
+  section { padding: 34px 0; }
+  .section-head { margin-bottom: 18px; }
+  .section-head h2 {
+    font-size: 26px; font-weight: 800; letter-spacing: -0.02em;
+  }
+  .section-head p { color: var(--muted); margin-top: 6px; font-size: 15px; }
+
+  .history {
+    background: var(--panel); border: 1px solid var(--hairline);
+    border-radius: 14px; overflow: hidden;
+  }
+  .history .item {
+    display: flex; align-items: center; gap: 14px;
+    padding: 14px 18px;
+  }
+  .history .item + .item { border-top: 1px solid var(--hairline); }
+  .history .lead {
+    flex: none; width: 30px; text-align: center; font-size: 16px;
+  }
+  .history .lead .swatch {
+    display: inline-block; width: 15px; height: 15px; border-radius: 4px;
+    background: var(--swatch); border: 1px solid rgba(0,0,0,0.15); vertical-align: -2px;
+  }
+  .history .lead .thumb {
+    display: inline-block; width: 24px; height: 17px; border-radius: 3px;
+    background: linear-gradient(135deg, #7fc7ff, #2e63e7 60%, #163a8f); vertical-align: -3px;
+  }
+  .history .body b { font-weight: 650; }
+  .history .body .desc { color: var(--muted); font-size: 14px; margin-top: 1px; }
+  .history .tail {
+    margin-left: auto; flex: none; text-align: right;
+    color: var(--muted); font-size: 12.5px; line-height: 1.5;
+  }
+  .history .star { color: var(--star); }
+
+  /* ---------- install ---------- */
+  .install-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--hairline);
+    border-radius: 14px; padding: 22px;
+    min-width: 0;   /* let the grid shrink cards; commands scroll inside */
+  }
+  .card h3 { font-size: 17px; font-weight: 700; margin-bottom: 12px; }
+  .card ol { padding-left: 20px; font-size: 14.5px; color: var(--ink); }
+  .card ol li { margin: 7px 0; }
+  .card ol li span { color: var(--muted); }
+  .cmd {
+    display: flex; align-items: center; gap: 10px;
+    margin-top: 12px; padding: 10px 12px;
+    background: var(--bg); border: 1px solid var(--hairline); border-radius: 9px;
+    font-size: 12.5px; overflow-x: auto; white-space: nowrap;
+  }
+  .cmd code { flex: 1; }
+  .copy-btn {
+    flex: none; font-size: 12px; font-weight: 600;
+    color: var(--accent); background: none; border: 1px solid var(--hairline);
+    border-radius: 6px; padding: 3px 9px; cursor: pointer;
+    font-family: inherit;
+  }
+  .copy-btn:hover { border-color: var(--accent); }
+  .copy-btn.done { color: var(--muted); border-color: var(--hairline); }
+  .card .note { margin-top: 12px; font-size: 13px; color: var(--muted); }
+
+  /* ---------- privacy ---------- */
+  .privacy {
+    border-left: 3px solid var(--accent);
+    padding: 4px 0 4px 20px; max-width: 62ch;
+  }
+  .privacy p { color: var(--muted); font-size: 15px; }
+  .privacy p b { color: var(--ink); }
+
+  /* ---------- footer ---------- */
+  footer {
+    margin-top: 40px; padding: 28px 0 44px;
+    border-top: 1px solid var(--hairline);
+    font-size: 13.5px; color: var(--muted);
+    display: flex; gap: 20px; flex-wrap: wrap;
+  }
+  footer .spacer { margin-left: auto; }
+
+  @media (max-width: 860px) {
+    .hero { grid-template-columns: 1fr; padding: 40px 0 56px; gap: 40px; }
+    .install-grid { grid-template-columns: 1fr; }
+    .history .tail { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <nav>
+    <img src="icon.png" alt="" width="28" height="28">
+    <span class="name">Jotter</span>
+    <span class="links">
+      <a href="https://github.com/ryanchankh/Jotter">GitHub</a>
+      <a href="https://github.com/ryanchankh/Jotter/releases">Releases</a>
+    </span>
+  </nav>
+
+  <header class="hero">
+    <div>
+      <h1>Your clipboard,<br><em>remembered.</em></h1>
+      <p class="sub">
+        Jotter keeps every copy — text, images, colors — in your Mac's menu
+        bar. Press <kbd>⌘⇧V</kbd>, type a few letters, hit Return. Free and
+        open source: one Swift file, no dependencies, and nothing ever
+        leaves your Mac.
+      </p>
+      <div class="cta-row">
+        <a class="btn primary" href="https://github.com/ryanchankh/Jotter/releases/latest">Download for macOS</a>
+        <a class="btn ghost" href="https://github.com/ryanchankh/Jotter">View the source</a>
+      </div>
+      <p class="meta-line">macOS 13+ &nbsp;·&nbsp; ~330 KB &nbsp;·&nbsp; MIT license</p>
+    </div>
+
+    <div class="menu-demo" aria-hidden="true">
+      <div class="menu">
+        <div class="search">⌕&nbsp; Fuzzy search…</div>
+        <div class="row"><span class="star">★</span><span class="txt mono">git@github.com:you/dotfiles.git</span><span class="key">1</span></div>
+        <div class="sep"></div>
+        <div class="row"><span class="swatch"></span><span class="txt mono color-text">#FF5733</span><span class="key">2</span></div>
+        <div class="row"><span class="txt mono">https://developer.apple.com/docs</span><span class="key">3</span></div>
+        <div class="row"><span class="txt">meeting notes — themes for the q3 review</span><span class="key">4</span></div>
+        <div class="row"><span class="thumb"></span><span class="txt">Image 640×480</span><span class="key">▸</span></div>
+        <div class="sep"></div>
+        <div class="hint">hold ⌥ to favorite/unfavorite · ⇧ to edit</div>
+        <div class="row"><span class="txt">History…</span></div>
+        <div class="row"><span class="txt">Settings…</span><span class="key">⌘ ,</span></div>
+        <div class="row"><span class="txt">Quit Jotter</span><span class="key">⌘ Q</span></div>
+      </div>
+    </div>
+  </header>
+
+  <section id="features">
+    <div class="section-head">
+      <h2>Everything it saves, the way it saves it</h2>
+      <p>Features, presented the way Jotter presents your history.</p>
+    </div>
+    <div class="history">
+      <div class="item">
+        <span class="lead star">★</span>
+        <span class="body"><b>Favorites stay pinned on top</b>
+          <div class="desc">⌥-click any item to pin it. Favorites are never pushed out, no matter how much you copy.</div></span>
+        <span class="tail mono">⌥1–⌥9<br>never evicted</span>
+      </div>
+      <div class="item">
+        <span class="lead">⌕</span>
+        <span class="body"><b>Fuzzy search built in</b>
+          <div class="desc">Typing “cbm” finds “ClipboardManager”. Click the icon and the search field is already focused.</div></span>
+        <span class="tail mono">any letters<br>ranked results</span>
+      </div>
+      <div class="item">
+        <span class="lead mono">1–9</span>
+        <span class="body"><b>Grab any item by number</b>
+          <div class="desc">⌘⇧V opens the keyboard-first list: arrows + Return, or a single digit to copy instantly.</div></span>
+        <span class="tail mono">⌘⇧V<br>keyboard-first</span>
+      </div>
+      <div class="item">
+        <span class="lead">✎</span>
+        <span class="body"><b>Edit before you paste</b>
+          <div class="desc">⌘⇧C opens whatever you just copied in a small editor. Tweak it, ⌘↩, and the edited text is on your clipboard.</div></span>
+        <span class="tail mono">⌘⇧C<br>⌘↩ copies</span>
+      </div>
+      <div class="item">
+        <span class="lead"><span class="swatch"></span></span>
+        <span class="body"><b>Colors render as themselves</b>
+          <div class="desc">Copy #FF5733 or rgb(255, 87, 51) and the item shows in its own color, with a swatch.</div></span>
+        <span class="tail mono">#hex · rgb()<br>7 chars</span>
+      </div>
+      <div class="item">
+        <span class="lead"><span class="thumb"></span></span>
+        <span class="body"><b>Images, with hover previews</b>
+          <div class="desc">Copied images get a thumbnail in the list — hover for a large preview, click to copy it back.</div></span>
+        <span class="tail mono">PNG on disk<br>Image 640×480</span>
+      </div>
+      <div class="item">
+        <span class="lead">•••</span>
+        <span class="body"><b>Passwords are never recorded</b>
+          <div class="desc">Anything a password manager marks as concealed is skipped entirely.</div></span>
+        <span class="tail mono">concealed type<br>skipped</span>
+      </div>
+      <div class="item">
+        <span class="lead mono">{&thinsp;}</span>
+        <span class="body"><b>Plain files on your disk</b>
+          <div class="desc">History is JSON and PNGs in a folder you choose. Read it, back it up, or point it at a synced folder.</div></span>
+        <span class="tail mono">history.json<br>images/*.png</span>
+      </div>
+    </div>
+  </section>
+
+  <section id="install">
+    <div class="section-head">
+      <h2>Install in a minute</h2>
+    </div>
+    <div class="install-grid">
+      <div class="card">
+        <h3>Download</h3>
+        <ol>
+          <li>Grab the zip from the <a href="https://github.com/ryanchankh/Jotter/releases/latest">latest release</a> and unzip it.</li>
+          <li>Drag <b>Jotter.app</b> into <span class="mono">/Applications</span>.</li>
+          <li>First launch: right-click → <b>Open</b>. <span>(The app is signed ad-hoc, not notarized, so Gatekeeper asks once.)</span></li>
+        </ol>
+        <div class="cmd">
+          <code class="mono">xattr -d com.apple.quarantine /Applications/Jotter.app</code>
+          <button class="copy-btn" data-copy="xattr -d com.apple.quarantine /Applications/Jotter.app">Copy</button>
+        </div>
+        <p class="note">Prefer the terminal? That clears the Gatekeeper prompt instead.</p>
+      </div>
+      <div class="card">
+        <h3>Build from source</h3>
+        <ol>
+          <li>All you need is the Xcode command-line tools.</li>
+          <li>The whole app is one Swift file; the script compiles, packages, signs, and installs it.</li>
+        </ol>
+        <div class="cmd">
+          <code class="mono">git clone https://github.com/ryanchankh/Jotter && cd Jotter && ./build-app.sh</code>
+          <button class="copy-btn" data-copy="git clone https://github.com/ryanchankh/Jotter && cd Jotter && ./build-app.sh">Copy</button>
+        </div>
+        <p class="note">Yes, the Copy buttons on this page work. It would be strange if a clipboard manager's website made you select text.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="privacy">
+    <div class="privacy">
+      <p><b>Private by construction, not by policy.</b> Jotter has no network
+      code to audit — the entire app is
+      <a href="https://github.com/ryanchankh/Jotter/blob/main/Jotter.swift">one readable Swift file</a>.
+      Your history lives in plain JSON and PNG files in a folder you choose,
+      and stays there until you delete it.</p>
+    </div>
+  </section>
+
+  <footer>
+    <span>© 2026 Ryan Chan Kwan Ho</span>
+    <a href="https://github.com/ryanchankh/Jotter/blob/main/LICENSE">MIT license</a>
+    <a href="https://github.com/ryanchankh/Jotter/blob/main/CHANGELOG.md">Changelog</a>
+    <span class="spacer"></span>
+    <a href="mailto:ryanchankwanho@gmail.com?subject=%5BJotter%20Support%5D%20">Support</a>
+  </footer>
+
+</div>
+
+<script>
+  for (const btn of document.querySelectorAll(".copy-btn")) {
+    btn.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(btn.dataset.copy);
+        btn.textContent = "Copied ✓";
+        btn.classList.add("done");
+        setTimeout(() => {
+          btn.textContent = "Copy";
+          btn.classList.remove("done");
+        }, 1600);
+      } catch (e) {
+        btn.textContent = "Select & copy";
+      }
+    });
+  }
+</script>
+</body>
+</html>

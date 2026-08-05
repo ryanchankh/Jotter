@@ -9,6 +9,10 @@
   One Swift file. No dependencies. Nothing ever leaves your Mac.
 </p>
 
+<p align="center">
+  <a href="https://ryanchankh.github.io/Jotter/"><b>ryanchankh.github.io/Jotter</b></a>
+</p>
+
 ## Features
 
 - Watches the clipboard and keeps your recent copies (text **and** images)
