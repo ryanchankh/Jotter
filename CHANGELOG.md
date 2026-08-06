@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.3 — Unreleased
+## 1.3 — 2026-08-06
 
 - Copying an item from the list bumps it to the top of the history
   with a fresh timestamp, as if it had just been copied. Favorites
