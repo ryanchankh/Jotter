@@ -270,6 +270,17 @@ final class ClipboardStore: ObservableObject {
         history = h
     }
 
+    /// Re-copying an item from the list bumps it to the top with a fresh
+    /// timestamp, as if it had just been copied. Favorite and folder stay.
+    func moveToFront(id: UUID) {
+        guard var item = history.first(where: { $0.id == id }) else { return }
+        var h = history
+        h.removeAll { $0.id == id }
+        item.date = Date()
+        h.insert(item, at: 0)
+        history = h
+    }
+
     func addText(_ str: String) {
         var h = history
         let existing = h.first { $0.dedupKey == "t:\(str)" }
@@ -1346,6 +1357,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
             }
         }
         lastChangeCount = pb.changeCount   // don't re-add our own write
+        store.moveToFront(id: item.id)
     }
 
     @objc func toggleFavorite(_ sender: NSMenuItem) {
@@ -1409,6 +1421,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
             .map(\.id))
         store.setFavorite(ids: ids, favorite)
         store.setFolder(ids: ids, folder)
+        if let id = ids.first {
+            store.moveToFront(id: id)
+        }
         let pb = NSPasteboard.general
         pb.clearContents()
         pb.setString(edited, forType: .string)

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3 — Unreleased
+
+- Copying an item from the list bumps it to the top of the history
+  with a fresh timestamp, as if it had just been copied. Favorites
+  stay pinned; foldered items bump within their folder.
+
 ## 1.2 — 2026-08-05
 
 - Settings → History is now a folder browser: a sidebar with All
